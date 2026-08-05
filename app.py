@@ -18,7 +18,13 @@ with st.sidebar:
     
     st.divider()
     st.subheader("🔑 Dostęp API")
-    ruptela_key = st.text_input("Ruptela API Key", type="password")
+    
+    # Pobieranie klucza z Secrets (jeśli istnieje) lub z pola tekstowego
+    if "RUPTELA_API_KEY" in st.secrets:
+        ruptela_key = st.secrets["RUPTELA_API_KEY"]
+        st.success("API Ruptela podłączone (Secrets)")
+    else:
+        ruptela_key = st.text_input("Ruptela API Key", type="password")
 
 # Definicja zakładek
 tab1, tab2 = st.tabs(["📸 Skaner Bloków Amazon", "📄 Faktury i Rozliczenia UTA"])
@@ -27,29 +33,41 @@ with tab1:
     st.subheader("1. Wgraj zrzut ekranu z Amazon Relay")
     uploaded_file = st.file_uploader("Dodaj screen oferty (PNG/JPG)", type=["png", "jpg", "jpeg"])
     
+    # Domyślne wartości początkowe w stanie sesji
+    if "truck_reg" not in st.session_state:
+        st.session_state["truck_reg"] = "KN0783G"
+        st.session_state["total_km_amazon"] = 2687
+        st.session_state["rate_eur"] = 4572.59
+        st.session_state["duration_days"] = 5
+        st.session_state["toll_est_eur"] = 732.50
+
     if uploaded_file is not None:
-        # Resetowanie formularza przy wykryciu nowego pliku
+        # Wykrywanie nowego pliku – czyszczenie / resetowanie formularza
         if "last_filename" not in st.session_state or st.session_state["last_filename"] != uploaded_file.name:
             st.session_state["last_filename"] = uploaded_file.name
-            st.session_state["truck_reg"] = "KN0783G"
-            st.session_state["total_km_amazon"] = 2687
-            st.session_state["rate_eur"] = 4572.59
-            st.session_state["duration_days"] = 5
-            st.session_state["toll_est_eur"] = 732.50
+            
+            # W tym miejscu docelowo podłączamy odczyt ze zdjęcia (OCR).
+            # Na ten moment zerujemy wartości po zmianie pliku:
+            st.session_state["truck_reg"] = ""
+            st.session_state["total_km_amazon"] = 0
+            st.session_state["rate_eur"] = 0.0
+            st.session_state["duration_days"] = 1
+            st.session_state["toll_est_eur"] = 0.0
+            st.rerun()
 
         st.image(uploaded_file, caption="Załadowany screen bloku", use_column_width=True)
         st.success("Plik został załadowany!")
         
-        # Pola formularza
+        # Pola formularza powiązane ze stanem sesji poprzez 'key'
         col1, col2, col3 = st.columns(3)
         with col1:
-            truck_reg = st.text_input("Numer rejestracyjny", value=st.session_state.get("truck_reg", "KN0783G"))
-            total_km_amazon = st.number_input("Dystans z Amazona (km)", value=st.session_state.get("total_km_amazon", 2687))
+            truck_reg = st.text_input("Numer rejestracyjny", key="truck_reg")
+            total_km_amazon = st.number_input("Dystans z Amazona (km)", key="total_km_amazon")
         with col2:
-            rate_eur = st.number_input("Stawka z Amazona (€)", value=st.session_state.get("rate_eur", 4572.59))
-            duration_days = st.number_input("Czas trwania (dni)", value=st.session_state.get("duration_days", 5))
+            rate_eur = st.number_input("Stawka z Amazona (€)", key="rate_eur")
+            duration_days = st.number_input("Czas trwania (dni)", key="duration_days")
         with col3:
-            toll_est_eur = st.number_input("Szacowane opłaty drogowe / UTA (€)", value=st.session_state.get("toll_est_eur", 732.50))
+            toll_est_eur = st.number_input("Szacowane opłaty drogowe / UTA (€)", key="toll_est_eur")
 
         st.divider()
         st.subheader("2. Odczyt z Ruptela GPS API")
@@ -58,7 +76,7 @@ with tab1:
         ruptela_spalanie = 23.10  # l/100km
         ruptela_km = 2922.49      # km rzeczywiste
         
-        st.info(f"Pojazd: **{truck_reg}** | Średnie spalanie z CAN: **{ruptela_spalanie} l/100km** | Przebieg rzeczywisty: **{ruptela_km} km**")
+        st.info(f"Pojazd: **{truck_reg if truck_reg else 'Brak num. rej.'}** | Średnie spalanie z CAN: **{ruptela_spalanie} l/100km** | Przebieg rzeczywisty: **{ruptela_km} km**")
         
         # Obliczenia
         total_revenue_pln = rate_eur * eur_rate
