@@ -1,6 +1,6 @@
 streamlit
 requests
 pandas
-openai
 Pillow
-starlette<0.40.0
+easyocr
+opencv-python-headless
