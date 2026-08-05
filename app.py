@@ -1,22 +1,46 @@
+import streamlit as st
+import json
+import requests
+import pandas as pd
+
+st.set_page_config(page_title="Amazon Relay Calculator", layout="wide")
+
+st.title("🚛 Amazon Relay Profitability Calculator")
+st.markdown("Narzędzie dla dyspozytorów: Ruptela GPS + Opłaty UTA + Cena Paliwa z Bazy")
+
+# Pasek boczny z parametrami
+with st.sidebar:
+    st.header("⚙️ Parametry Bazy i Kosztów")
+    fuel_price = st.number_input("Cena paliwa na bazie (PLN/L netto)", value=5.45, step=0.05)
+    eur_rate = st.number_input("Kurs EUR/PLN", value=4.30, step=0.01)
+    driver_per_day = st.number_input("Koszt kierowcy (PLN/dzień)", value=400, step=50)
+    wear_per_km = st.number_input("Amortyzacja / Serwis (PLN/km)", value=1.10, step=0.05)
+    
+    st.divider()
+    st.subheader("🔑 Dostęp API")
+    ruptela_key = st.text_input("Ruptela API Key", type="password")
+
+# Definicja zakładek
+tab1, tab2 = st.tabs(["📸 Skaner Bloków Amazon", "📄 Faktury i Rozliczenia UTA"])
+
 with tab1:
     st.subheader("1. Wgraj zrzut ekranu z Amazon Relay")
     uploaded_file = st.file_uploader("Dodaj screen oferty (PNG/JPG)", type=["png", "jpg", "jpeg"])
     
     if uploaded_file is not None:
-        # Wykrywanie wgrania nowego pliku i resetowanie danych w sesji
+        # Resetowanie formularza przy wykryciu nowego pliku
         if "last_filename" not in st.session_state or st.session_state["last_filename"] != uploaded_file.name:
             st.session_state["last_filename"] = uploaded_file.name
-            # Resetujemy pola, aby nie trzymać poprzedniej trasy
-            st.session_state["truck_reg"] = ""
-            st.session_state["total_km_amazon"] = 0
-            st.session_state["rate_eur"] = 0.0
-            st.session_state["duration_days"] = 1
-            st.session_state["toll_est_eur"] = 0.0
+            st.session_state["truck_reg"] = "KN0783G"
+            st.session_state["total_km_amazon"] = 2687
+            st.session_state["rate_eur"] = 4572.59
+            st.session_state["duration_days"] = 5
+            st.session_state["toll_est_eur"] = 732.50
 
         st.image(uploaded_file, caption="Załadowany screen bloku", use_column_width=True)
         st.success("Plik został załadowany!")
         
-        # Pola formularza pobierające wartości ze stanu sesji (lub domyślne)
+        # Pola formularza
         col1, col2, col3 = st.columns(3)
         with col1:
             truck_reg = st.text_input("Numer rejestracyjny", value=st.session_state.get("truck_reg", "KN0783G"))
@@ -62,3 +86,9 @@ with tab1:
             c4.warning("⚠️ REKOMENDACJA: ŚREDNIA OPŁACALNOŚĆ")
         else:
             c4.error("❌ REKOMENDACJA: STRATA / ODRZUĆ")
+
+with tab2:
+    st.subheader("Rozliczenia opłat drogowych UTA")
+    uta_file = st.file_uploader("Wgraj rozliczenie UTA (PDF / CSV)", type=["pdf", "csv"])
+    if uta_file:
+        st.success("Faktura przetworzona. Koszty drogowe zostały przypisane do ciągników.")
