@@ -1,6 +1,5 @@
-streamlit
-requests
+streamlit>=1.35.0
+starlette<0.40.0
 pandas
-Pillow
-easyocr
-opencv-python-headless
+numpy
+matplotlib
