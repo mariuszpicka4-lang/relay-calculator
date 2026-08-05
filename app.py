@@ -1,14 +1,9 @@
 import streamlit as st
 import pandas as pd
 from PIL import Image
-import re
-
-# Próba załadowania EasyOCR (jeśli jest zainstalowany)
-try:
-    import easyocr
-    reader = easyocr.Reader(['pl', 'en'], gpu=False)
-except ImportError:
-    reader = None
+import json
+from google import genai
+from google.genai import types
 
 st.set_page_config(page_title="Amazon Relay Calculator", layout="wide")
 
@@ -37,7 +32,7 @@ with tab1:
     st.subheader("1. Wgraj zrzut ekranu z Amazon Relay")
     uploaded_file = st.file_uploader("Dodaj screen oferty (PNG/JPG)", type=["png", "jpg", "jpeg"])
     
-    # Inicjalizacja stanu
+    # Inicjalizacja domyślnego stanu sesji
     if "truck_reg" not in st.session_state:
         st.session_state["truck_reg"] = ""
         st.session_state["total_km_amazon"] = 0
@@ -46,25 +41,50 @@ with tab1:
         st.session_state["toll_est_eur"] = 0.0
 
     if uploaded_file is not None:
-        # Jeśli wgrano nowy plik -> uruchamiamy OCR
+        # Analiza wizyjna nowego zdjęcia przy użyciu Gemini Flash
         if "last_filename" not in st.session_state or st.session_state["last_filename"] != uploaded_file.name:
             st.session_state["last_filename"] = uploaded_file.name
             
-            if reader is not None:
-                with st.spinner("Odczytywanie danych ze zdjęcia (OCR)..."):
-                    image = Image.open(uploaded_file)
-                    results = reader.readtext(image, detail=0)
-                    full_text = " ".join(results)
-
-                    # Wyszukiwanie rejestracji (np. 2 litery + 5 cyfr/liter)
-                    reg_match = re.search(r'\b[A-Z]{2,3}\s?[0-9A-Z]{4,5}\b', full_text)
-                    if reg_match:
-                        st.session_state["truck_reg"] = reg_match.group(0)
+            gemini_key = st.secrets.get("GEMINI_API_KEY")
+            if gemini_key:
+                with st.spinner("🔍 Analizowanie zrzutu ekranu przez AI..."):
+                    try:
+                        client = genai.Client(api_key=gemini_key)
+                        image = Image.open(uploaded_file)
+                        
+                        prompt = """
+                        Przeanalizuj ten zrzut ekranu z Amazon Relay i wyciągnij następujące dane w formacie czystego JSON:
+                        - "truck_reg": numer rejestracyjny pojazdu / ciągnika (jeśli jest widoczny, inaczej pusty string "")
+                        - "total_km_amazon": całkowity dystans trasy w km (liczba całkowita)
+                        - "rate_eur": całkowita stawka za blok w EUR (liczba zmiennoprzecinkowa)
+                        - "duration_days": czas trwania bloku w dniach (liczba całkowita)
+                        
+                        Zwróć TYLKO poprawny kod JSON bez formatowania Markdown.
+                        """
+                        
+                        response = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=[image, prompt]
+                        )
+                        
+                        # Czyszczenie i parsowanie odpowiedzi
+                        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+                        parsed_data = json.loads(clean_text)
+                        
+                        st.session_state["truck_reg"] = str(parsed_data.get("truck_reg", ""))
+                        st.session_state["total_km_amazon"] = int(parsed_data.get("total_km_amazon", 0))
+                        st.session_state["rate_eur"] = float(parsed_data.get("rate_eur", 0.0))
+                        st.session_state["duration_days"] = int(parsed_data.get("duration_days", 1))
+                        st.session_state["toll_est_eur"] = round(st.session_state["total_km_amazon"] * 0.25, 2) # szacunek opłat
+                    except Exception as e:
+                        st.error(f"Błąd odczytu obrazu: {e}")
+            else:
+                st.warning("⚠️ Brak klucza GEMINI_API_KEY w Streamlit Secrets. Dodaj go, aby włączyć odczyt ze zdjęć.")
 
             st.rerun()
 
         st.image(uploaded_file, caption="Załadowany screen bloku", use_column_width=True)
-        st.success("Plik został załadowany!")
+        st.success("Plik został przetworzony!")
         
         # Formularz z odczytanymi danymi
         col1, col2, col3 = st.columns(3)
@@ -81,7 +101,7 @@ with tab1:
         st.subheader("2. Odczyt z Ruptela GPS API")
         
         ruptela_spalanie = 23.10
-        ruptela_km = 2922.49
+        ruptela_km = total_km_amazon if total_km_amazon > 0 else 2922.49
         
         st.info(f"Pojazd: **{truck_reg if truck_reg else 'Nie wykryto — wpisz ręcznie'}** | Średnie spalanie z CAN: **{ruptela_spalanie} l/100km** | Przebieg rzeczywisty: **{ruptela_km} km**")
         
