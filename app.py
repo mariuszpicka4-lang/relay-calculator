@@ -5,7 +5,7 @@ import re
 import easyocr
 import numpy as np
 
-# Inicjalizacja czytnika OCR (ładowanie raz do pamięci)
+# Inicjalizacja czytnika OCR
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(['pl', 'en'], gpu=False)
@@ -50,7 +50,7 @@ with tab1:
         if "last_filename" not in st.session_state or st.session_state["last_filename"] != uploaded_file.name:
             st.session_state["last_filename"] = uploaded_file.name
             
-            with st.spinner("🔍 Skanowanie zrzutu ekranu (EasyOCR)..."):
+            with st.spinner("🔍 Skanowanie zrzutu ekranu..."):
                 try:
                     image = Image.open(uploaded_file)
                     img_np = np.array(image)
