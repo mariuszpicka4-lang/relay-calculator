@@ -3,3 +3,4 @@ requests
 pandas
 openai
 Pillow
+starlette<0.40.0
