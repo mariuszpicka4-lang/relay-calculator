@@ -1,14 +1,21 @@
 import streamlit as st
-import json
-import requests
 import pandas as pd
+from PIL import Image
+import re
+
+# Próba załadowania EasyOCR (jeśli jest zainstalowany)
+try:
+    import easyocr
+    reader = easyocr.Reader(['pl', 'en'], gpu=False)
+except ImportError:
+    reader = None
 
 st.set_page_config(page_title="Amazon Relay Calculator", layout="wide")
 
 st.title("🚛 Amazon Relay Profitability Calculator")
 st.markdown("Narzędzie dla dyspozytorów: Ruptela GPS + Opłaty UTA + Cena Paliwa z Bazy")
 
-# Pasek boczny z parametrami
+# Pasek boczny
 with st.sidebar:
     st.header("⚙️ Parametry Bazy i Kosztów")
     fuel_price = st.number_input("Cena paliwa na bazie (PLN/L netto)", value=5.45, step=0.05)
@@ -18,47 +25,48 @@ with st.sidebar:
     
     st.divider()
     st.subheader("🔑 Dostęp API")
-    
-    # Pobieranie klucza z Secrets (jeśli istnieje) lub z pola tekstowego
     if "RUPTELA_API_KEY" in st.secrets:
         ruptela_key = st.secrets["RUPTELA_API_KEY"]
         st.success("API Ruptela podłączone (Secrets)")
     else:
         ruptela_key = st.text_input("Ruptela API Key", type="password")
 
-# Definicja zakładek
 tab1, tab2 = st.tabs(["📸 Skaner Bloków Amazon", "📄 Faktury i Rozliczenia UTA"])
 
 with tab1:
     st.subheader("1. Wgraj zrzut ekranu z Amazon Relay")
     uploaded_file = st.file_uploader("Dodaj screen oferty (PNG/JPG)", type=["png", "jpg", "jpeg"])
     
-    # Domyślne wartości początkowe w stanie sesji
+    # Inicjalizacja stanu
     if "truck_reg" not in st.session_state:
-        st.session_state["truck_reg"] = "KN0783G"
-        st.session_state["total_km_amazon"] = 2687
-        st.session_state["rate_eur"] = 4572.59
-        st.session_state["duration_days"] = 5
-        st.session_state["toll_est_eur"] = 732.50
+        st.session_state["truck_reg"] = ""
+        st.session_state["total_km_amazon"] = 0
+        st.session_state["rate_eur"] = 0.0
+        st.session_state["duration_days"] = 1
+        st.session_state["toll_est_eur"] = 0.0
 
     if uploaded_file is not None:
-        # Wykrywanie nowego pliku – czyszczenie / resetowanie formularza
+        # Jeśli wgrano nowy plik -> uruchamiamy OCR
         if "last_filename" not in st.session_state or st.session_state["last_filename"] != uploaded_file.name:
             st.session_state["last_filename"] = uploaded_file.name
             
-            # W tym miejscu docelowo podłączamy odczyt ze zdjęcia (OCR).
-            # Na ten moment zerujemy wartości po zmianie pliku:
-            st.session_state["truck_reg"] = ""
-            st.session_state["total_km_amazon"] = 0
-            st.session_state["rate_eur"] = 0.0
-            st.session_state["duration_days"] = 1
-            st.session_state["toll_est_eur"] = 0.0
+            if reader is not None:
+                with st.spinner("Odczytywanie danych ze zdjęcia (OCR)..."):
+                    image = Image.open(uploaded_file)
+                    results = reader.readtext(image, detail=0)
+                    full_text = " ".join(results)
+
+                    # Wyszukiwanie rejestracji (np. 2 litery + 5 cyfr/liter)
+                    reg_match = re.search(r'\b[A-Z]{2,3}\s?[0-9A-Z]{4,5}\b', full_text)
+                    if reg_match:
+                        st.session_state["truck_reg"] = reg_match.group(0)
+
             st.rerun()
 
         st.image(uploaded_file, caption="Załadowany screen bloku", use_column_width=True)
         st.success("Plik został załadowany!")
         
-        # Pola formularza powiązane ze stanem sesji poprzez 'key'
+        # Formularz z odczytanymi danymi
         col1, col2, col3 = st.columns(3)
         with col1:
             truck_reg = st.text_input("Numer rejestracyjny", key="truck_reg")
@@ -72,11 +80,10 @@ with tab1:
         st.divider()
         st.subheader("2. Odczyt z Ruptela GPS API")
         
-        # Wartości domyślne / pobrane z Rupteli
-        ruptela_spalanie = 23.10  # l/100km
-        ruptela_km = 2922.49      # km rzeczywiste
+        ruptela_spalanie = 23.10
+        ruptela_km = 2922.49
         
-        st.info(f"Pojazd: **{truck_reg if truck_reg else 'Brak num. rej.'}** | Średnie spalanie z CAN: **{ruptela_spalanie} l/100km** | Przebieg rzeczywisty: **{ruptela_km} km**")
+        st.info(f"Pojazd: **{truck_reg if truck_reg else 'Nie wykryto — wpisz ręcznie'}** | Średnie spalanie z CAN: **{ruptela_spalanie} l/100km** | Przebieg rzeczywisty: **{ruptela_km} km**")
         
         # Obliczenia
         total_revenue_pln = rate_eur * eur_rate
